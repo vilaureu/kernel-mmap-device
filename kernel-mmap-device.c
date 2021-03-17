@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/mm.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(
@@ -32,6 +33,23 @@ static int kmd_open(struct inode *inode, struct file *file)
 }
 
 /*
+ * kmd_mmap - handle the mmap systemcall for this device
+ */
+static int kmd_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	static struct vm_operations_struct vm_ops = {};
+
+  // TODO: protect from private writable mappings
+	// pr_info("kmd: vm_flags 0x%lx", vma->vm_flags);
+
+	// WARN_ON(vma->vm_flags & VM_WRITE);
+
+  // vma->vm_flags &= VM_DENYWRITE;
+	vma->vm_ops = &vm_ops;
+	return 0;
+}
+
+/*
  * kmd_init() - initialize this module
  * 
  * Add one "kernel-mmap-device" character device.
@@ -40,7 +58,8 @@ static int __init kmd_init(void)
 {
 	int result;
 	static struct file_operations fops = { .owner = THIS_MODULE,
-					       .open = kmd_open };
+					       .open = kmd_open,
+					       .mmap = kmd_mmap };
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&kmd_dev, 0, 1, KMD_DEVICE_NAME);
