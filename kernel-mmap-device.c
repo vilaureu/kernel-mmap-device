@@ -3,7 +3,7 @@
  * kernel-mmap-device.c - an example device driver that allows to mmap a single kernel accessible page
  */
 
-#include "linux/device.h"
+#include <uapi/asm-generic/errno-base.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
@@ -20,6 +20,18 @@ static struct class *kmd_class;
 static struct device *kmd_device;
 
 /*
+ * kmd_open() - open the file only non-writable
+ */
+static int kmd_open(struct inode *inode, struct file *file)
+{
+	if (file->f_mode & FMODE_WRITE) {
+		return -EACCES;
+	}
+
+	return 0;
+}
+
+/*
  * kmd_init() - initialize this module
  * 
  * Add one "kernel-mmap-device" character device.
@@ -27,7 +39,8 @@ static struct device *kmd_device;
 static int __init kmd_init(void)
 {
 	int result;
-	struct file_operations fops = { .owner = THIS_MODULE };
+	static struct file_operations fops = { .owner = THIS_MODULE,
+					       .open = kmd_open };
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&kmd_dev, 0, 1, KMD_DEVICE_NAME);
@@ -56,22 +69,23 @@ static int __init kmd_init(void)
 	kmd_class = class_create(THIS_MODULE, KMD_DEVICE_NAME);
 	if (IS_ERR_VALUE(kmd_class)) {
 		pr_warn("kmd: can't create class");
+		result = PTR_ERR(kmd_class);
 		goto fail_class_create;
 	}
 
-  kmd_device = device_create(kmd_class, NULL, kmd_dev, NULL, KMD_DEVICE_NAME);
-  if (IS_ERR_VALUE(kmd_device)) {
-    pr_warn("kmd: can't create device");
-    goto fail_device_create;
-  }
-
-  pr_debug("kmd: module loaded");
+	kmd_device =
+		device_create(kmd_class, NULL, kmd_dev, NULL, KMD_DEVICE_NAME);
+	if (IS_ERR_VALUE(kmd_device)) {
+		pr_warn("kmd: can't create device");
+		result = PTR_ERR(kmd_device);
+		goto fail_device_create;
+	}
 
 	return 0;
 
 	// Error handing
 fail_device_create:
-  class_destroy(kmd_class);
+	class_destroy(kmd_class);
 fail_class_create:
 fail_cdev_add:
 	cdev_del(kmd_cdev);
@@ -83,12 +97,10 @@ fail_chrdev:
 
 static void __exit kmd_exit(void)
 {
-  device_destroy(kmd_class, kmd_dev);
-  class_destroy(kmd_class);
+	device_destroy(kmd_class, kmd_dev);
+	class_destroy(kmd_class);
 	cdev_del(kmd_cdev);
 	unregister_chrdev_region(kmd_dev, 1);
-
-  pr_debug("kmd: module unloaded");
 }
 
 module_init(kmd_init);
