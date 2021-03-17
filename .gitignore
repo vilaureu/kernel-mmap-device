@@ -1,0 +1,13 @@
+# General rules
+.*
+!.gitignore
+
+# Module compilation
+*.ko
+*.mod*
+*.o
+modules.order
+Module.symvers
+
+# JSON Compilation Database
+compile_commands.json
