@@ -14,6 +14,8 @@ insmod kernel-mmap-device.c
 ```
 
 ## Usage
+A character device is created at `/dev/kernel-mmap-device`
+
 *TODO*
 
 ## Licence
