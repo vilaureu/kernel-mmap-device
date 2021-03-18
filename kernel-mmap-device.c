@@ -3,6 +3,7 @@
  * kernel-mmap-device.c - an example device driver that allows to mmap a single kernel accessible page
  */
 
+#include <linux/mm_types.h>
 #include <uapi/asm-generic/errno-base.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -34,18 +35,35 @@ static int kmd_open(struct inode *inode, struct file *file)
 }
 
 /*
+ * kmd_fault - handle the page faults to the mapped device
+ *
+ * The shared kernel page can only be mapped to the first page in the vma.
+ * All other accesses to the vma result in VM_FAULT_SIGBUS.
+ */
+vm_fault_t kmd_fault(struct vm_fault *vmf)
+{
+	if (vmf->pgoff > 0)
+		return VM_FAULT_SIGBUS;
+
+	vmf->page = kmd_page;
+	get_page(vmf->page);
+
+	return 0;
+}
+
+/*
  * kmd_mmap - handle the mmap systemcall for this device
  */
 static int kmd_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	static struct vm_operations_struct vm_ops = {};
+	static struct vm_operations_struct vm_ops = { .fault = kmd_fault };
 
-  // TODO: protect from private writable mappings
+	// TODO: protect from private writable mappings
 	// pr_info("kmd: vm_flags 0x%lx", vma->vm_flags);
 
 	// WARN_ON(vma->vm_flags & VM_WRITE);
 
-  // vma->vm_flags &= VM_DENYWRITE;
+	// vma->vm_flags &= VM_DENYWRITE;
 	vma->vm_ops = &vm_ops;
 	return 0;
 }
@@ -120,7 +138,7 @@ fail_cdev_alloc:
 	unregister_chrdev_region(kmd_dev, 1);
 fail_chrdev:
 	__free_pages(kmd_page, 0);
-fail_alloc_page:	
+fail_alloc_page:
 	return result;
 }
 
