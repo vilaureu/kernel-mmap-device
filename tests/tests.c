@@ -9,9 +9,11 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <stdlib.h>
 
 #define DEVICE "/dev/kernel-mmap-device"
-#define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
+#define PAGE_SIZE ((size_t)sysconf(_SC_PAGE_SIZE))
 
 /*
  * test_fn - small wrapper function for test functions
@@ -39,6 +41,20 @@ int open_rdonly(void)
 }
 
 /*
+ * mmap_checked - map a memory region with the given number of pages
+ */
+void *mmap_checked(unsigned long pages, int prot, int flags, int fd,
+		   unsigned long offp)
+{
+	void *addr = mmap(NULL, pages * PAGE_SIZE, prot, flags, fd,
+			  offp * PAGE_SIZE);
+	if (addr == MAP_FAILED) {
+		printf("mmap failed\n");
+	}
+	return addr;
+}
+
+/*
  * unmap - unmap a memory region with the given number of pages
  */
 bool unmap(void *addr, unsigned long pages)
@@ -51,6 +67,43 @@ bool unmap(void *addr, unsigned long pages)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * check_page - check that the page is filled with zeros
+ */
+bool check_page(char *addr)
+{
+	for (size_t i = 0; i < PAGE_SIZE; i++) {
+		if (addr[i] != 0) {
+			printf("byte %ld is not zero\n", i);
+			return false;
+		}
+	}
+	return true;
+}
+
+/*
+ * read_fault - expects a read at the address to result in an error
+ */
+bool read_fault(char *addr)
+{
+	pid_t pid = fork();
+	if (pid < 0) {
+		printf("fork failed");
+		return false;
+	} else if (pid == 0) {
+		char c;
+		*((volatile char *)&c) = *addr;
+		exit(0);
+	} else {
+		int wstatus;
+		waitpid(pid, &wstatus, 0);
+		if (wstatus != 0)
+			return true;
+		printf("read did not result in an error");
+		return false;
+	}
 }
 
 /*
@@ -89,7 +142,7 @@ bool test_open(void)
 }
 
 /*
- * test_mmap test mmap with different PROT_* and MAP_* flags
+ * test_mmap - test mmap with different PROT_* and MAP_* flags
  */
 bool test_mmap(void)
 {
@@ -117,9 +170,46 @@ bool test_mmap(void)
 		result = false;
 
 	// TODO: is this a problem?
-	addr = mmap(NULL, PAGE_SIZE, PROT_WRITE, MAP_PRIVATE, fd, 0);
-	if (addr != MAP_FAILED) {
-		printf("mmap with PROT_WRITE and MAP_PRIVATE succeeded\n");
+	// addr = mmap(NULL, PAGE_SIZE, PROT_WRITE, MAP_PRIVATE, fd, 0);
+	// if (addr != MAP_FAILED) {
+	// 	printf("mmap with PROT_WRITE and MAP_PRIVATE succeeded\n");
+	// 	result = false;
+	// }
+	// if (!unmap(addr, 1))
+	// 	result = false;
+
+	return result;
+}
+
+/*
+ * test_read - test reading the mapped memory region
+ */
+bool test_read(void)
+{
+	int result = true;
+
+	int fd = open_rdonly();
+	if (fd < 0)
+		return false;
+
+	char *addr;
+	addr = mmap_checked(2, PROT_READ, MAP_SHARED, fd, 0);
+	if (addr == MAP_FAILED) {
+		result = false;
+		goto unmap;
+	}
+	if (!check_page(addr))
+		result = false;
+	if (!read_fault(&addr[PAGE_SIZE]))
+		result = false;
+unmap:
+	if (!unmap(addr, 2))
+		result = false;
+
+	addr = mmap_checked(1, PROT_READ, MAP_SHARED, fd, 1);
+	if (addr == MAP_FAILED) {
+		result = false;
+	} else if (!read_fault(addr)) {
 		result = false;
 	}
 	if (!unmap(addr, 1))
@@ -133,5 +223,6 @@ int main(void)
 	bool result = true;
 	test_fn(&test_open, "test_open", &result);
 	test_fn(&test_mmap, "test_mmap", &result);
+	test_fn(&test_read, "test_read", &result);
 	return result ? 0 : 1;
 }
