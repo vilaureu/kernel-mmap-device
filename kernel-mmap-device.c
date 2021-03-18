@@ -58,12 +58,6 @@ static int kmd_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	static struct vm_operations_struct vm_ops = { .fault = kmd_fault };
 
-	// TODO: protect from private writable mappings
-	// pr_info("kmd: vm_flags 0x%lx", vma->vm_flags);
-
-	// WARN_ON(vma->vm_flags & VM_WRITE);
-
-	// vma->vm_flags &= VM_DENYWRITE;
 	vma->vm_ops = &vm_ops;
 	return 0;
 }
@@ -80,12 +74,13 @@ static int __init kmd_init(void)
 					       .open = kmd_open,
 					       .mmap = kmd_mmap };
 
-	kmd_page = alloc_page(GFP_KERNEL & __GFP_ZERO);
+	kmd_page = alloc_page(GFP_KERNEL);
 	if (kmd_page == NULL) {
 		pr_warn("kmd: can't allocate page");
 		result = -ENOMEM;
 		goto fail_alloc_page;
 	}
+	memset(page_address(kmd_page), 'X', PAGE_SIZE);
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&kmd_dev, 0, 1, KMD_DEVICE_NAME);
