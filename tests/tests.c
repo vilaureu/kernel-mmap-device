@@ -75,8 +75,8 @@ bool unmap(void *addr, unsigned long pages)
 bool check_page(char *addr)
 {
 	for (size_t i = 0; i < PAGE_SIZE; i++) {
-		if (addr[i] != 0) {
-			printf("byte %ld is not zero\n", i);
+		if (addr[i] != 'X') {
+			printf("byte %ld is not 'X'\n", i);
 			return false;
 		}
 	}
@@ -218,11 +218,45 @@ unmap:
 	return result;
 }
 
+/*
+ * test_write - check security of private writable mappings
+ */
+bool test_write(void)
+{
+	int result = true;
+
+	int fd = open_rdonly();
+	if (fd < 0)
+		return false;
+
+	char *addr;
+	addr = mmap_checked(1, PROT_WRITE, MAP_PRIVATE, fd, 0);
+	if (addr == MAP_FAILED) {
+		result = false;
+	} else {
+		addr[0] = 'Z';
+	}
+	if (!unmap(addr, 1))
+		result = false;
+
+	addr = mmap_checked(1, PROT_READ, MAP_SHARED, fd, 0);
+	if (addr == MAP_FAILED) {
+		result = false;
+	} else if (!check_page(addr)) {
+		result = false;
+	}
+	if (!unmap(addr, 1))
+		result = false;
+
+	return result;
+}
+
 int main(void)
 {
 	bool result = true;
 	test_fn(&test_open, "test_open", &result);
 	test_fn(&test_mmap, "test_mmap", &result);
 	test_fn(&test_read, "test_read", &result);
+	test_fn(&test_write, "test_write", &result);
 	return result ? 0 : 1;
 }
