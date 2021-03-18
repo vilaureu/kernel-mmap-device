@@ -169,15 +169,6 @@ bool test_mmap(void)
 	if (!unmap(addr, 1))
 		result = false;
 
-	// TODO: is this a problem?
-	// addr = mmap(NULL, PAGE_SIZE, PROT_WRITE, MAP_PRIVATE, fd, 0);
-	// if (addr != MAP_FAILED) {
-	// 	printf("mmap with PROT_WRITE and MAP_PRIVATE succeeded\n");
-	// 	result = false;
-	// }
-	// if (!unmap(addr, 1))
-	// 	result = false;
-
 	return result;
 }
 

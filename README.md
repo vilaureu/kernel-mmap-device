@@ -16,7 +16,7 @@ insmod kernel-mmap-device.c
 ## Usage
 A character device is created at `/dev/kernel-mmap-device`
 
-*TODO*
+This device can be `open`ed read-only and the first page can then be `mmap`ed to read the kernel memory page.
 
 ## Licence
 GPLv2 or later
