@@ -19,6 +19,7 @@ static dev_t kmd_dev;
 static struct cdev *kmd_cdev;
 static struct class *kmd_class;
 static struct device *kmd_device;
+static struct page *kmd_page;
 
 /*
  * kmd_open() - open the file only non-writable
@@ -60,6 +61,13 @@ static int __init kmd_init(void)
 	static struct file_operations fops = { .owner = THIS_MODULE,
 					       .open = kmd_open,
 					       .mmap = kmd_mmap };
+
+	kmd_page = alloc_page(GFP_KERNEL & __GFP_ZERO);
+	if (kmd_page == NULL) {
+		pr_warn("kmd: can't allocate page");
+		result = -ENOMEM;
+		goto fail_alloc_page;
+	}
 
 	// Allocate one character device number with dynamic major number
 	result = alloc_chrdev_region(&kmd_dev, 0, 1, KMD_DEVICE_NAME);
@@ -111,6 +119,8 @@ fail_cdev_add:
 fail_cdev_alloc:
 	unregister_chrdev_region(kmd_dev, 1);
 fail_chrdev:
+	__free_pages(kmd_page, 0);
+fail_alloc_page:	
 	return result;
 }
 
@@ -120,6 +130,7 @@ static void __exit kmd_exit(void)
 	class_destroy(kmd_class);
 	cdev_del(kmd_cdev);
 	unregister_chrdev_region(kmd_dev, 1);
+	__free_pages(kmd_page, 0);
 }
 
 module_init(kmd_init);
